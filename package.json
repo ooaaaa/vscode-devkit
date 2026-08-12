@@ -21,10 +21,12 @@
       }
     ]
   },
+  "packageManager": "pnpm@9.15.4",
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "pnpm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "dev": "pnpm run watch",
     "package": "vsce package --no-dependencies",
     "install-ext": "code --install-extension vscode-devkit-0.0.1.vsix"
   },
