@@ -27,7 +27,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "dev": "pnpm run watch",
-    "package": "echo y | vsce package --no-dependencies",
+    "package": "vsce package --no-dependencies",
     "install-ext": "code --install-extension vscode-devkit-0.0.1.vsix && code --command workbench.action.reloadWindow"
   },
   "devDependencies": {
