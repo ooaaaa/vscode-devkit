@@ -10,7 +10,7 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -27,8 +27,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "dev": "pnpm run watch",
-    "package": "vsce package --no-dependencies",
-    "install-ext": "code --install-extension vscode-devkit-0.0.1.vsix"
+    "package": "echo y | vsce package --no-dependencies",
+    "install-ext": "code --install-extension vscode-devkit-0.0.1.vsix && code --command workbench.action.reloadWindow"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
