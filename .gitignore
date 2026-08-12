@@ -1,0 +1,16 @@
+node_modules/
+out/
+*.vsix
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Temp
+tmp/

@@ -1,0 +1,37 @@
+{
+  "name": "vscode-devkit",
+  "displayName": "VSCode DevKit",
+  "description": "日常开发小工具集合：复制分支名等实用功能",
+  "version": "0.0.1",
+  "publisher": "zhiyuan",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "copyBranchName.copy",
+        "title": "复制当前分支名",
+        "icon": "$(copy)"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies",
+    "install-ext": "code --install-extension vscode-devkit-0.0.1.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/vscode": "^1.80.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.3.0"
+  }
+}
