@@ -1,58 +1,8 @@
 import * as vscode from 'vscode';
-import { exec, execFile } from 'child_process';
+import { exec } from 'child_process';
 
 let statusBarItem: vscode.StatusBarItem;
-let renameBarItem: vscode.StatusBarItem;
 let currentBranch = '';
-
-// 使用参数数组调用 git，避免用户输入的分支名被 shell 解析
-function git(args: string[], cwd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd }, (err, stdout, stderr) => {
-      if (err) {
-        reject(new Error(stderr.trim() || err.message));
-        return;
-      }
-      resolve(stdout.trim());
-    });
-  });
-}
-
-async function renameBranch() {
-  const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!cwd || !currentBranch) {
-    vscode.window.showWarningMessage('未检测到 Git 分支');
-    return;
-  }
-  const oldName = currentBranch;
-
-  const newName = await vscode.window.showInputBox({
-    title: '重命名当前分支',
-    value: oldName,
-    prompt: `当前分支: ${oldName}`,
-    validateInput: async (value) => {
-      const name = value.trim();
-      if (!name) return '分支名不能为空';
-      if (name === oldName) return '新分支名与当前分支名相同';
-      try {
-        await git(['check-ref-format', '--branch', name], cwd);
-        return undefined;
-      } catch {
-        return '分支名不合法';
-      }
-    },
-  });
-  if (!newName) return;
-  const target = newName.trim();
-
-  try {
-    await git(['branch', '-m', oldName, target], cwd);
-  } catch (e) {
-    vscode.window.showErrorMessage(`重命名失败: ${(e as Error).message}`);
-    return;
-  }
-  refreshBranch();
-}
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('[vscode-devkit] 插件已激活');
@@ -76,16 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
   statusBarItem.text = '$(copy)';
   statusBarItem.show();
 
-  const renameCmd = vscode.commands.registerCommand('renameBranch.rename', renameBranch);
-
-  // 用小数优先级紧贴复制按钮，避免其他插件（如 Git Graph）插到中间
-  renameBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9998.999);
-  renameBarItem.command = 'renameBranch.rename';
-  renameBarItem.tooltip = '重命名当前分支';
-  renameBarItem.text = '$(edit)';
-  renameBarItem.show();
-
-  context.subscriptions.push(copyCmd, statusBarItem, renameCmd, renameBarItem);
+  context.subscriptions.push(copyCmd, statusBarItem);
 
   // 初始刷新 + 监听工作区变化
   refreshBranch();
@@ -118,7 +59,6 @@ function refreshBranch() {
       currentBranch = branch;
       statusBarItem.text = '$(copy)';
       statusBarItem.show();
-      renameBarItem.show();
     } else {
       hideBranchItem();
     }
@@ -128,7 +68,6 @@ function refreshBranch() {
 function hideBranchItem() {
   currentBranch = '';
   statusBarItem.hide();
-  renameBarItem.hide();
 }
 
 export function deactivate() {}

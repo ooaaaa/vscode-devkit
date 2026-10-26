@@ -18,11 +18,6 @@
         "command": "copyBranchName.copy",
         "title": "复制当前分支名",
         "icon": "$(copy)"
-      },
-      {
-        "command": "renameBranch.rename",
-        "title": "重命名当前分支",
-        "icon": "$(edit)"
       }
     ]
   },
