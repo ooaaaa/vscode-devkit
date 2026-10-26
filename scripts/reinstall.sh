@@ -21,4 +21,6 @@ echo "==> 安装 ${publisher}.${name}@${version}"
 # 版本号未变时必须加 --force 才会覆盖旧安装
 code --install-extension "$vsix" --force
 
-echo "==> 完成。在 VS Code 中执行 Developer: Reload Window（Cmd+Shift+P）使新版本生效"
+echo "==> 重载 VS Code 窗口"
+# 由插件内 registerUriHandler 处理，首次安装前的旧版本没有该入口，需手动重载一次
+open "vscode://${publisher}.${name}/reload"

@@ -105,6 +105,17 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(copyCmd, statusBarItem, renameCmd, renameBarItem);
 
+  // 供 scripts/reinstall.sh 安装后通过 vscode://zhiyuan.vscode-devkit/reload 重载窗口
+  context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      handleUri(uri) {
+        if (uri.path === '/reload') {
+          vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
+      },
+    })
+  );
+
   // 初始刷新 + 监听工作区变化
   refreshBranch();
 
