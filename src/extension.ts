@@ -18,14 +18,6 @@ function git(args: string[], cwd: string): Promise<string> {
   });
 }
 
-async function readGitConfig(key: string, cwd: string): Promise<string | undefined> {
-  try {
-    return await git(['config', '--get', key], cwd);
-  } catch {
-    return undefined;
-  }
-}
-
 async function renameBranch() {
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!cwd || !currentBranch) {
@@ -53,8 +45,6 @@ async function renameBranch() {
   if (!newName) return;
   const target = newName.trim();
 
-  const hasUpstream = await readGitConfig(`branch.${oldName}.remote`, cwd);
-
   try {
     await git(['branch', '-m', oldName, target], cwd);
   } catch (e) {
@@ -62,14 +52,6 @@ async function renameBranch() {
     return;
   }
   refreshBranch();
-
-  if (!hasUpstream) return;
-  // branch -m 会让新分支继续跟踪远程旧分支，解除后 VS Code 内置 Git 会显示「发布分支」
-  try {
-    await git(['branch', '--unset-upstream', target], cwd);
-  } catch (e) {
-    vscode.window.showErrorMessage(`解除远程旧分支跟踪失败: ${(e as Error).message}`);
-  }
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -104,17 +86,6 @@ export function activate(context: vscode.ExtensionContext) {
   renameBarItem.show();
 
   context.subscriptions.push(copyCmd, statusBarItem, renameCmd, renameBarItem);
-
-  // 供 scripts/reinstall.sh 安装后通过 vscode://zhiyuan.vscode-devkit/reload 重载窗口
-  context.subscriptions.push(
-    vscode.window.registerUriHandler({
-      handleUri(uri) {
-        if (uri.path === '/reload') {
-          vscode.commands.executeCommand('workbench.action.reloadWindow');
-        }
-      },
-    })
-  );
 
   // 初始刷新 + 监听工作区变化
   refreshBranch();
