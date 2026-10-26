@@ -122,12 +122,13 @@ export function activate(context: vscode.ExtensionContext) {
   statusBarItem.command = 'copyBranchName.copy';
   statusBarItem.tooltip = '点击复制当前分支名';
   // 先立即显示，不等 git 结果
-  statusBarItem.text = '$(copy) 复制分支名';
+  statusBarItem.text = '$(copy)';
   statusBarItem.show();
 
   const renameCmd = vscode.commands.registerCommand('renameBranch.rename', renameBranch);
 
-  renameBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9998);
+  // 用小数优先级紧贴复制按钮，避免其他插件（如 Git Graph）插到中间
+  renameBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9998.999);
   renameBarItem.command = 'renameBranch.rename';
   renameBarItem.tooltip = '重命名当前分支';
   renameBarItem.text = '$(edit)';
@@ -164,7 +165,7 @@ function refreshBranch() {
     const branch = stdout.trim();
     if (branch && branch !== 'HEAD') {
       currentBranch = branch;
-      statusBarItem.text = '$(copy) 复制分支名';
+      statusBarItem.text = '$(copy)';
       statusBarItem.show();
       renameBarItem.show();
     } else {
