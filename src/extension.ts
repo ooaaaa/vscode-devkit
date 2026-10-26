@@ -53,9 +53,7 @@ async function renameBranch() {
   if (!newName) return;
   const target = newName.trim();
 
-  // 重命名前读取上游信息，branch -m 会把配置迁移到新分支名下
-  const remote = await readGitConfig(`branch.${oldName}.remote`, cwd);
-  const mergeRef = await readGitConfig(`branch.${oldName}.merge`, cwd);
+  const hasUpstream = await readGitConfig(`branch.${oldName}.remote`, cwd);
 
   try {
     await git(['branch', '-m', oldName, target], cwd);
@@ -65,42 +63,13 @@ async function renameBranch() {
   }
   refreshBranch();
 
-  if (!remote || !mergeRef) {
-    vscode.window.showInformationMessage(`已将本地分支 ${oldName} 重命名为 ${target}（无远程上游）`);
-    return;
+  if (!hasUpstream) return;
+  // branch -m 会让新分支继续跟踪远程旧分支，解除后 VS Code 内置 Git 会显示「发布分支」
+  try {
+    await git(['branch', '--unset-upstream', target], cwd);
+  } catch (e) {
+    vscode.window.showErrorMessage(`解除远程旧分支跟踪失败: ${(e as Error).message}`);
   }
-
-  const remoteOld = mergeRef.replace(/^refs\/heads\//, '');
-  const action = await vscode.window.showWarningMessage(
-    `本地分支已重命名为 ${target}。是否推送到 ${remote} 并删除远程旧分支 ${remoteOld}？`,
-    { modal: true, detail: '删除远程旧分支后，基于该分支的 PR/MR 可能会被关闭。' },
-    '同步远程'
-  );
-  if (action !== '同步远程') {
-    vscode.window.showInformationMessage(`已重命名本地分支，远程分支 ${remote}/${remoteOld} 未改动`);
-    return;
-  }
-
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: '同步远程分支' },
-    async (progress) => {
-      try {
-        progress.report({ message: `推送 ${target}` });
-        await git(['push', '-u', remote, target], cwd);
-      } catch (e) {
-        vscode.window.showErrorMessage(`推送新分支失败: ${(e as Error).message}`);
-        return;
-      }
-      try {
-        progress.report({ message: `删除远程 ${remoteOld}` });
-        await git(['push', remote, '--delete', remoteOld], cwd);
-      } catch (e) {
-        vscode.window.showErrorMessage(`新分支已推送，删除远程旧分支失败: ${(e as Error).message}`);
-        return;
-      }
-      vscode.window.showInformationMessage(`远程分支已从 ${remoteOld} 重命名为 ${target}`);
-    }
-  );
 }
 
 export function activate(context: vscode.ExtensionContext) {
