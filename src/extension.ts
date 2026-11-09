@@ -1,17 +1,21 @@
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
+import * as path from 'path';
+import type { GitAPI, GitExtension, Repository } from './git';
 
 let statusBarItem: vscode.StatusBarItem;
-let currentBranch = '';
+// 当前选中的仓库：跟随活动编辑器所在仓库
+let activeRepo: Repository | undefined;
+let repoStateListener: vscode.Disposable | undefined;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   console.log('[vscode-devkit] 插件已激活');
 
   // 注册复制命令
   const copyCmd = vscode.commands.registerCommand('copyBranchName.copy', async () => {
-    if (currentBranch) {
-      await vscode.env.clipboard.writeText(currentBranch);
-      vscode.window.showInformationMessage(`已复制分支名: ${currentBranch}`);
+    const branch = activeRepo?.state.HEAD?.name;
+    if (branch) {
+      await vscode.env.clipboard.writeText(branch);
+      vscode.window.showInformationMessage(`已复制分支名: ${branch}`);
     } else {
       vscode.window.showWarningMessage('未检测到 Git 分支');
     }
@@ -21,53 +25,61 @@ export function activate(context: vscode.ExtensionContext) {
   // VS Code 内置 git 分支的优先级是 10000，这里用 9999 紧跟其后
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9999);
   statusBarItem.command = 'copyBranchName.copy';
-  statusBarItem.tooltip = '点击复制当前分支名';
-  // 先立即显示，不等 git 结果
   statusBarItem.text = '$(copy)';
-  statusBarItem.show();
 
-  context.subscriptions.push(copyCmd, statusBarItem);
+  context.subscriptions.push(copyCmd, statusBarItem, {
+    dispose: () => repoStateListener?.dispose(),
+  });
 
-  // 初始刷新 + 监听工作区变化
-  refreshBranch();
+  const git = await getGitAPI();
 
-  // 每当活动编辑器切换或文件保存时刷新（覆盖分支切换场景）
+  // 仓库增减、活动编辑器切换时重新确定当前仓库
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(() => refreshBranch()),
-    vscode.workspace.onDidSaveTextDocument(() => refreshBranch())
+    git.onDidOpenRepository(() => selectRepository(git)),
+    git.onDidCloseRepository(() => selectRepository(git)),
+    vscode.window.onDidChangeActiveTextEditor(() => selectRepository(git))
   );
 
-  // 定时轮询兜底（3 秒），确保切换分支后及时更新
-  const interval = setInterval(refreshBranch, 3000);
-  context.subscriptions.push({ dispose: () => clearInterval(interval) });
+  selectRepository(git);
 }
 
-function refreshBranch() {
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!workspaceFolder) {
-    hideBranchItem();
+async function getGitAPI(): Promise<GitAPI> {
+  const ext = vscode.extensions.getExtension<GitExtension>('vscode.git');
+  if (!ext) {
+    throw new Error('未找到内置 Git 扩展 vscode.git');
+  }
+  const exports = ext.isActive ? ext.exports : await ext.activate();
+  return exports.getAPI(1);
+}
+
+function isSameRepo(a: Repository, b: Repository): boolean {
+  return a.rootUri.toString() === b.rootUri.toString();
+}
+
+function selectRepository(git: GitAPI) {
+  const uri = vscode.window.activeTextEditor?.document.uri;
+  const editorRepo = uri ? git.getRepository(uri) : null;
+  // git API 每次返回新的包装对象，需按 rootUri 比较
+  const current = activeRepo && git.repositories.find((r) => isSameRepo(r, activeRepo!));
+  // 活动编辑器不属于任何仓库时保持当前仓库，尚未选中过则取第一个
+  const next = editorRepo ?? current ?? git.repositories[0];
+
+  if (!(next && activeRepo && isSameRepo(next, activeRepo))) {
+    repoStateListener?.dispose();
+    repoStateListener = next?.state.onDidChange(render);
+  }
+  activeRepo = next;
+  render();
+}
+
+function render() {
+  const branch = activeRepo?.state.HEAD?.name;
+  if (!activeRepo || !branch) {
+    statusBarItem.hide();
     return;
   }
-
-  exec('git rev-parse --abbrev-ref HEAD', { cwd: workspaceFolder }, (err, stdout) => {
-    if (err) {
-      hideBranchItem();
-      return;
-    }
-    const branch = stdout.trim();
-    if (branch && branch !== 'HEAD') {
-      currentBranch = branch;
-      statusBarItem.text = '$(copy)';
-      statusBarItem.show();
-    } else {
-      hideBranchItem();
-    }
-  });
-}
-
-function hideBranchItem() {
-  currentBranch = '';
-  statusBarItem.hide();
+  statusBarItem.tooltip = `点击复制 ${path.basename(activeRepo.rootUri.fsPath)} 的分支名: ${branch}`;
+  statusBarItem.show();
 }
 
 export function deactivate() {}
