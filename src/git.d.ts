@@ -11,9 +11,16 @@ export interface RepositoryState {
   readonly onDidChange: Event<void>;
 }
 
+// selected 对应 SCM 面板中当前聚焦的仓库
+export interface RepositoryUIState {
+  readonly selected: boolean;
+  readonly onDidChange: Event<void>;
+}
+
 export interface Repository {
   readonly rootUri: Uri;
   readonly state: RepositoryState;
+  readonly ui: RepositoryUIState;
 }
 
 export interface GitAPI {

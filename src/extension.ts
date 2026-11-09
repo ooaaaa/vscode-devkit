@@ -3,9 +3,13 @@ import * as path from 'path';
 import type { GitAPI, GitExtension, Repository } from './git';
 
 let statusBarItem: vscode.StatusBarItem;
-// 当前选中的仓库：跟随活动编辑器所在仓库
+// 当前仓库：与内置状态栏一致，取「活动编辑器所在仓库」与「SCM 面板聚焦仓库」中最后变化的那个
 let activeRepo: Repository | undefined;
-let repoStateListener: vscode.Disposable | undefined;
+let activeRepoStateListener: vscode.Disposable | undefined;
+// 每个仓库的 SCM 面板聚焦监听，key 为 rootUri
+const repoUiListeners = new Map<string, vscode.Disposable>();
+// 上一次活动编辑器的资源，用于过滤与切换编辑器无关的 tab 事件
+let lastEditorUri: string | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log('[vscode-devkit] 插件已激活');
@@ -28,19 +32,30 @@ export async function activate(context: vscode.ExtensionContext) {
   statusBarItem.text = '$(copy)';
 
   context.subscriptions.push(copyCmd, statusBarItem, {
-    dispose: () => repoStateListener?.dispose(),
+    dispose: () => {
+      activeRepoStateListener?.dispose();
+      repoUiListeners.forEach((d) => d.dispose());
+      repoUiListeners.clear();
+    },
   });
 
   const git = await getGitAPI();
+  git.repositories.forEach(watchRepository);
 
-  // 仓库增减、活动编辑器切换时重新确定当前仓库
   context.subscriptions.push(
-    git.onDidOpenRepository(() => selectRepository(git)),
-    git.onDidCloseRepository(() => selectRepository(git)),
-    vscode.window.onDidChangeActiveTextEditor(() => selectRepository(git))
+    git.onDidOpenRepository((repo) => onRepositoryOpened(git, repo)),
+    git.onDidCloseRepository((repo) => onRepositoryClosed(git, repo)),
+    vscode.window.tabGroups.onDidChangeTabs(() => onActiveEditorChanged(git)),
+    vscode.window.tabGroups.onDidChangeTabGroups(() => onActiveEditorChanged(git))
   );
 
-  selectRepository(git);
+  const editorUri = activeEditorUri();
+  lastEditorUri = editorUri?.toString();
+  setActiveRepo(
+    (editorUri && git.getRepository(editorUri)) ??
+      git.repositories.find((r) => r.ui.selected) ??
+      git.repositories[0]
+  );
 }
 
 async function getGitAPI(): Promise<GitAPI> {
@@ -52,23 +67,81 @@ async function getGitAPI(): Promise<GitAPI> {
   return exports.getAPI(1);
 }
 
+// git API 每次返回新的包装对象，需按 rootUri 比较
 function isSameRepo(a: Repository, b: Repository): boolean {
   return a.rootUri.toString() === b.rootUri.toString();
 }
 
-function selectRepository(git: GitAPI) {
-  const uri = vscode.window.activeTextEditor?.document.uri;
-  const editorRepo = uri ? git.getRepository(uri) : null;
-  // git API 每次返回新的包装对象，需按 rootUri 比较
-  const current = activeRepo && git.repositories.find((r) => isSameRepo(r, activeRepo!));
-  // 活动编辑器不属于任何仓库时保持当前仓库，尚未选中过则取第一个
-  const next = editorRepo ?? current ?? git.repositories[0];
-
-  if (!(next && activeRepo && isSameRepo(next, activeRepo))) {
-    repoStateListener?.dispose();
-    repoStateListener = next?.state.onDidChange(render);
+// 取活动 tab 的资源，覆盖文本、diff、自定义编辑器和 notebook
+function activeEditorUri(): vscode.Uri | undefined {
+  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  if (
+    input instanceof vscode.TabInputText ||
+    input instanceof vscode.TabInputCustom ||
+    input instanceof vscode.TabInputNotebook
+  ) {
+    return input.uri;
   }
-  activeRepo = next;
+  if (input instanceof vscode.TabInputTextDiff || input instanceof vscode.TabInputNotebookDiff) {
+    return input.modified;
+  }
+  return undefined;
+}
+
+// SCM 面板聚焦某个仓库时切换过去
+function watchRepository(repo: Repository) {
+  const key = repo.rootUri.toString();
+  repoUiListeners.get(key)?.dispose();
+  repoUiListeners.set(
+    key,
+    repo.ui.onDidChange(() => {
+      if (repo.ui.selected) {
+        setActiveRepo(repo);
+      }
+    })
+  );
+}
+
+function onRepositoryOpened(git: GitAPI, repo: Repository) {
+  watchRepository(repo);
+  // 启动时仓库是陆续打开的，活动编辑器所在仓库打开后需要切换过去
+  const uri = activeEditorUri();
+  const editorRepo = uri ? git.getRepository(uri) : null;
+  if (!activeRepo || (editorRepo && isSameRepo(editorRepo, repo))) {
+    setActiveRepo(repo);
+  }
+}
+
+function onRepositoryClosed(git: GitAPI, repo: Repository) {
+  const key = repo.rootUri.toString();
+  repoUiListeners.get(key)?.dispose();
+  repoUiListeners.delete(key);
+  if (activeRepo && isSameRepo(activeRepo, repo)) {
+    setActiveRepo(git.repositories.find((r) => !isSameRepo(r, repo)));
+  }
+}
+
+// 活动编辑器切换时，若其资源属于某个仓库则切换过去；不属于任何仓库时保持不变
+function onActiveEditorChanged(git: GitAPI) {
+  const uri = activeEditorUri();
+  const key = uri?.toString();
+  if (key === lastEditorUri) {
+    return;
+  }
+  lastEditorUri = key;
+  const repo = uri ? git.getRepository(uri) : null;
+  if (repo) {
+    setActiveRepo(repo);
+  }
+}
+
+function setActiveRepo(repo: Repository | undefined) {
+  if (repo && activeRepo && isSameRepo(repo, activeRepo)) {
+    return;
+  }
+  activeRepoStateListener?.dispose();
+  activeRepo = repo;
+  activeRepoStateListener = repo?.state.onDidChange(render);
   render();
 }
 
